@@ -1,7 +1,6 @@
 import yfinance as yf
 import time
 from datetime import datetime
-import yfinance.shared as shared
 
 ticker = "TNA"
 interval = "1h"
@@ -12,11 +11,11 @@ log_file = "tna_monitor.log"
 def log_message(message):
     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     full_message = f"{timestamp} - {message}"
-    print(full_message)
+    print(full_message, flush=True)          # Added flush=True
     with open(log_file, "a") as f:
         f.write(full_message + "\n")
 
-print("Starting TNA monitor with improved rate limit handling...\n")
+print("Starting TNA monitor with flush=True...\n", flush=True)
 log_message("Monitor started")
 
 while True:
@@ -38,9 +37,5 @@ while True:
         time.sleep(check_every_minutes * 60)
         
     except Exception as e:
-        if "YFRateLimitError" in str(e) or "Too Many Requests" in str(e):
-            log_message("Rate limit hit. Waiting 2 extra minutes before retrying...")
-            time.sleep(120)
-        else:
-            log_message(f"Error: {e}")
-            time.sleep(60)
+        log_message(f"Error: {e}")
+        time.sleep(60)
