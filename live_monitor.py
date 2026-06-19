@@ -11,16 +11,16 @@ log_file = "tna_monitor.log"
 def log_message(message):
     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     full_message = f"{timestamp} - {message}"
-    print(full_message, flush=True)          # Added flush=True
+    print(full_message, flush=True)
     with open(log_file, "a") as f:
         f.write(full_message + "\n")
 
-print("Starting TNA monitor with flush=True...\n", flush=True)
+print("Starting TNA monitor with 30d historical data...\n", flush=True)
 log_message("Monitor started")
 
 while True:
     try:
-        df = yf.download(tickers=ticker, period="5d", interval=interval, progress=False)
+        df = yf.download(tickers=ticker, period="30d", interval=interval, progress=False)
         
         close_price = float(df['Close'].values.flatten()[-1])
         ema50 = float(df['Close'].ewm(span=50, adjust=False).mean().values.flatten()[-1])
