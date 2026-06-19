@@ -1,10 +1,11 @@
 import yfinance as yf
 import time
 from datetime import datetime
+import yfinance.shared as shared
 
 ticker = "TNA"
 interval = "1h"
-check_every_minutes = 5
+check_every_minutes = 8
 alert_level = 70.05
 log_file = "tna_monitor.log"
 
@@ -15,7 +16,7 @@ def log_message(message):
     with open(log_file, "a") as f:
         f.write(full_message + "\n")
 
-print("Starting enhanced TNA monitor with file logging...\n")
+print("Starting TNA monitor with improved rate limit handling...\n")
 log_message("Monitor started")
 
 while True:
@@ -30,7 +31,6 @@ while True:
         message = f"Close: ${close_price:.2f} | EMA50: ${ema50:.2f} | EMA20: ${ema20:.2f} | AO: {ao:.2f}"
         log_message(message)
         
-        # Alert condition
         if close_price > alert_level:
             alert_msg = f">>> ALERT: Price ${close_price:.2f} is above ${alert_level} (EMA50 level)"
             log_message(alert_msg)
@@ -38,5 +38,9 @@ while True:
         time.sleep(check_every_minutes * 60)
         
     except Exception as e:
-        log_message(f"Error: {e}")
-        time.sleep(60)
+        if "YFRateLimitError" in str(e) or "Too Many Requests" in str(e):
+            log_message("Rate limit hit. Waiting 2 extra minutes before retrying...")
+            time.sleep(120)
+        else:
+            log_message(f"Error: {e}")
+            time.sleep(60)
