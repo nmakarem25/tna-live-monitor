@@ -10,7 +10,6 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 ticker = "TNA"
 interval = "1h"
 check_every_minutes = 8
-alert_level = 70.05
 log_file = "tna_monitor.log"
 
 def log_message(message):
@@ -31,15 +30,15 @@ def send_telegram_message(message):
     except Exception as e:
         log_message(f"Telegram error: {e}")
 
-print("Starting TNA monitor with Telegram test message...\n", flush=True)
+print("Starting TNA monitor (Dynamic EMA50 alerts)...\n", flush=True)
 log_message("Monitor started")
 
 # Send test message on startup
-send_telegram_message("✅ <b>TNA Monitor Started</b>\nBot is now active and monitoring.")
+send_telegram_message("✅ <b>TNA Monitor Started</b>\nDynamic EMA50 alerts are now active.")
 
 while True:
     try:
-        df = yf.download(tickers=ticker, period="30d", interval=interval, progress=False)
+        df = yf.download(tickers=ticker, period="60d", interval=interval, progress=False)
         
         close_price = float(df['Close'].values.flatten()[-1])
         ema50 = float(df['Close'].ewm(span=50, adjust=False).mean().values.flatten()[-1])
@@ -49,8 +48,9 @@ while True:
         message = f"Close: ${close_price:.2f} | EMA50: ${ema50:.2f} | EMA20: ${ema20:.2f} | AO: {ao:.2f}"
         log_message(message)
         
-        if close_price > alert_level:
-            alert_msg = f"🚨 <b>ALERT</b>\nPrice: ${close_price:.2f} is above ${alert_level}\nEMA50: ${ema50:.2f} | AO: {ao:.2f}"
+        # Dynamic Alert: Price above current EMA50
+        if close_price > ema50:
+            alert_msg = f"🚨 <b>ALERT</b>\nPrice ${close_price:.2f} is above EMA50 (${ema50:.2f})\nAO: {ao:.2f}"
             log_message(alert_msg)
             send_telegram_message(alert_msg)
         
