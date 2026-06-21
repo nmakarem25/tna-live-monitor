@@ -30,11 +30,11 @@ def send_telegram_message(message):
     except Exception as e:
         log_message(f"Telegram error: {e}")
 
-print("Starting TNA monitor (Dynamic EMA50 alerts)...\n", flush=True)
+print("Starting TNA monitor with frequent test messages...\n", flush=True)
 log_message("Monitor started")
 
-# Send test message on startup
-send_telegram_message("✅ <b>TNA Monitor Started</b>\nDynamic EMA50 alerts are now active.")
+# Send test message on every cycle for testing
+send_telegram_message("🧪 <b>Test Message</b>\nTNA Monitor is running. This is a test to confirm Telegram delivery.")
 
 while True:
     try:
@@ -48,7 +48,7 @@ while True:
         message = f"Close: ${close_price:.2f} | EMA50: ${ema50:.2f} | EMA20: ${ema20:.2f} | AO: {ao:.2f}"
         log_message(message)
         
-        # Dynamic Alert: Price above current EMA50
+        # Dynamic Alert
         if close_price > ema50:
             alert_msg = f"🚨 <b>ALERT</b>\nPrice ${close_price:.2f} is above EMA50 (${ema50:.2f})\nAO: {ao:.2f}"
             log_message(alert_msg)
