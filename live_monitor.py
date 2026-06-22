@@ -14,8 +14,9 @@ check_every_minutes = 8
 log_file = "tna_monitor.log"
 position_file = "position.json"
 
-trading_paused = False          # Pause flag
+trading_paused = False
 last_alerted_candle = None
+last_update_id = 0   # For Telegram command polling
 
 def log_message(message, level="INFO"):
     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -47,13 +48,45 @@ def send_telegram_message(message):
         log_message(f"Telegram error: {e}", "ERROR")
         return False
 
-print("Starting TNA monitor (Position Tracking + Pause/Resume)...\n", flush=True)
+def check_telegram_commands():
+    global last_update_id, trading_paused
+    if not TELEGRAM_BOT_TOKEN:
+        return
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getUpdates?offset={last_update_id + 1}&timeout=5"
+    try:
+        response = requests.get(url, timeout=10).json()
+        if response.get("ok"):
+            for update in response.get("result", []):
+                last_update_id = update["update_id"]
+                message = update.get("message", {})
+                text = message.get("text", "").strip().lower()
+                
+                if text == "/pause":
+                    trading_paused = True
+                    send_telegram_message("⏸️ <b>Trading PAUSED</b>\nNo new buys will be considered.")
+                    log_message("Trading paused via Telegram command.", "WARNING")
+                
+                elif text == "/resume":
+                    trading_paused = False
+                    send_telegram_message("▶️ <b>Trading RESUMED</b>")
+                    log_message("Trading resumed via Telegram command.")
+    except Exception as e:
+        log_message(f"Telegram command check error: {e}", "WARNING")
+
+print("Starting TNA monitor (Full Version with Pause/Resume + Position Tracking)...\n", flush=True)
 log_message("Monitor started")
 
 position = load_position()
-send_telegram_message("✅ <b>TNA Monitor Active</b>\nPosition tracking + Pause/Resume enabled.")
+send_telegram_message("✅ <b>TNA Monitor Active</b>\nPosition tracking + Pause/Resume commands enabled.")
 
 while True:
+    check_telegram_commands()   # Check for /pause and /resume
+    
+    if trading_paused:
+        log_message("Trading is PAUSED. Skipping monitoring cycle.", "WARNING")
+        time.sleep(check_every_minutes * 60)
+        continue
+    
     try:
         df = yf.download(tickers=ticker, period="90d", interval=interval, progress=False)
         
@@ -65,15 +98,6 @@ while True:
         current_candle_time = df.index[-1]
         
         log_message(f"Close: ${close_price:.2f} | EMA50: ${ema50:.2f} | EMA20: ${ema20:.2f} | AO: {ao:.2f}")
-        
-        # === Manual Pause / Resume via Telegram ===
-        # (In real implementation we would check incoming Telegram messages here)
-        # For now, we simulate using variables. You can later send /pause or /resume.
-        
-        if trading_paused:
-            log_message("Trading is currently PAUSED.", "WARNING")
-            time.sleep(check_every_minutes * 60)
-            continue
         
         # One alert per 1H candle
         if close_price > ema50 and current_candle_time != last_alerted_candle:
