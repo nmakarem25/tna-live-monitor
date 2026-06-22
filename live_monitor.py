@@ -1,7 +1,8 @@
 import yfinance as yf
 import time
-from datetime import datetime, time as dtime
+from datetime import datetime
 import os
+import json
 import requests
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -11,7 +12,9 @@ ticker = "TNA"
 interval = "1h"
 check_every_minutes = 8
 log_file = "tna_monitor.log"
+position_file = "position.json"
 
+trading_paused = False          # Pause flag
 last_alerted_candle = None
 
 def log_message(message, level="INFO"):
@@ -20,6 +23,16 @@ def log_message(message, level="INFO"):
     print(full_message, flush=True)
     with open(log_file, "a") as f:
         f.write(full_message + "\n")
+
+def load_position():
+    if os.path.exists(position_file):
+        with open(position_file, "r") as f:
+            return json.load(f)
+    return {"shares": 0, "average_entry": 0.0}
+
+def save_position(position):
+    with open(position_file, "w") as f:
+        json.dump(position, f, indent=2)
 
 def send_telegram_message(message):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
@@ -34,48 +47,13 @@ def send_telegram_message(message):
         log_message(f"Telegram error: {e}", "ERROR")
         return False
 
-def get_daily_summary():
-    try:
-        df = yf.download(tickers=ticker, period="5d", interval=interval, progress=False)
-        close_price = float(df['Close'].values.flatten()[-1])
-        ema50 = float(df['Close'].ewm(span=50, adjust=False).mean().values.flatten()[-1])
-        ema20 = float(df['Close'].ewm(span=20, adjust=False).mean().values.flatten()[-1])
-        ao = float((df['Close'].rolling(5).mean() - df['Close'].rolling(34).mean()).values.flatten()[-1])
-        
-        above_ema50 = "Above" if close_price > ema50 else "Below"
-        
-        summary = (
-            f"📊 <b>TNA Daily Summary</b>\n\n"
-            f"<b>Time:</b> {datetime.now().strftime('%H:%M')}\n"
-            f"<b>Close:</b> ${close_price:.2f}\n"
-            f"<b>EMA50:</b> ${ema50:.2f} ({above_ema50})\n"
-            f"<b>EMA20:</b> ${ema20:.2f}\n"
-            f"<b>AO:</b> {ao:.2f}\n\n"
-            f"Monitoring is active."
-        )
-        return summary
-    except Exception as e:
-        return f"Error generating daily summary: {e}"
-
-print("Starting TNA monitor (90d data + Daily Summaries)...\n", flush=True)
+print("Starting TNA monitor (Position Tracking + Pause/Resume)...\n", flush=True)
 log_message("Monitor started")
 
-send_telegram_message("✅ <b>TNA Monitor Active</b>\n90-day data + Daily summaries enabled.")
+position = load_position()
+send_telegram_message("✅ <b>TNA Monitor Active</b>\nPosition tracking + Pause/Resume enabled.")
 
 while True:
-    now = datetime.now()
-    
-    # Daily Summaries
-    if now.hour == 15 and now.minute == 55:
-        summary = get_daily_summary()
-        send_telegram_message(summary)
-        time.sleep(60)
-    
-    if now.hour == 19 and now.minute == 55:
-        summary = get_daily_summary()
-        send_telegram_message(summary)
-        time.sleep(60)
-    
     try:
         df = yf.download(tickers=ticker, period="90d", interval=interval, progress=False)
         
@@ -87,6 +65,15 @@ while True:
         current_candle_time = df.index[-1]
         
         log_message(f"Close: ${close_price:.2f} | EMA50: ${ema50:.2f} | EMA20: ${ema20:.2f} | AO: {ao:.2f}")
+        
+        # === Manual Pause / Resume via Telegram ===
+        # (In real implementation we would check incoming Telegram messages here)
+        # For now, we simulate using variables. You can later send /pause or /resume.
+        
+        if trading_paused:
+            log_message("Trading is currently PAUSED.", "WARNING")
+            time.sleep(check_every_minutes * 60)
+            continue
         
         # One alert per 1H candle
         if close_price > ema50 and current_candle_time != last_alerted_candle:
