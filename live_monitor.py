@@ -57,19 +57,19 @@ def get_daily_summary():
     except Exception as e:
         return f"Error generating daily summary: {e}"
 
-print("Starting TNA monitor with Daily Summaries...\n", flush=True)
+print("Starting TNA monitor (90d data + Daily Summaries)...\n", flush=True)
 log_message("Monitor started")
 
-send_telegram_message("✅ <b>TNA Monitor Active</b>\nDaily summaries at 3:55 PM & 7:55 PM ET enabled.")
+send_telegram_message("✅ <b>TNA Monitor Active</b>\n90-day data + Daily summaries enabled.")
 
 while True:
     now = datetime.now()
     
-    # Daily Summaries at 3:55 PM and 7:55 PM ET
+    # Daily Summaries
     if now.hour == 15 and now.minute == 55:
         summary = get_daily_summary()
         send_telegram_message(summary)
-        time.sleep(60)  # Prevent multiple sends in the same minute
+        time.sleep(60)
     
     if now.hour == 19 and now.minute == 55:
         summary = get_daily_summary()
@@ -77,7 +77,8 @@ while True:
         time.sleep(60)
     
     try:
-        df = yf.download(tickers=ticker, period="60d", interval=interval, progress=False)
+        df = yf.download(tickers=ticker, period="90d", interval=interval, progress=False)
+        
         close_price = float(df['Close'].values.flatten()[-1])
         ema50 = float(df['Close'].ewm(span=50, adjust=False).mean().values.flatten()[-1])
         ema20 = float(df['Close'].ewm(span=20, adjust=False).mean().values.flatten()[-1])
