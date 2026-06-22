@@ -6,7 +6,7 @@ import json
 import requests
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+TELEGRAM_CHAT_ID = os.getenv("TELETELEGRAM_CHAT_ID")
 
 ticker = "TNA"
 interval = "1h"
@@ -89,10 +89,10 @@ def check_telegram_commands():
     except Exception as e:
         log_message(f"Telegram command error: {e}", "WARNING")
 
-print("Starting TNA monitor (With Auto Sell Logic)...\n", flush=True)
+print("Starting TNA monitor (Advanced Auto-Sell)...\n", flush=True)
 log_message("Monitor started")
 
-send_telegram_message("✅ <b>TNA Monitor Active</b>\nAuto sell logic + Pause/Resume enabled.")
+send_telegram_message("✅ <b>TNA Monitor Active</b>\nAdvanced auto-sell logic enabled.")
 
 while True:
     check_telegram_commands()
@@ -106,6 +106,7 @@ while True:
         close_price = float(df['Close'].values.flatten()[-1])
         ema50 = float(df['Close'].ewm(span=50, adjust=False).mean().values.flatten()[-1])
         ema20 = float(df['Close'].ewm(span=20, adjust=False).mean().values.flatten()[-1])
+        ema8 = float(df['Close'].ewm(span=8, adjust=False).mean().values.flatten()[-1])
         ao = float((df['Close'].rolling(5).mean() - df['Close'].rolling(34).mean()).values.flatten()[-1])
         
         current_candle_time = df.index[-1]
@@ -117,15 +118,25 @@ while True:
         if position["shares"] > 0:
             profit_pct = ((close_price - position["average_entry"]) / position["average_entry"]) * 100
             
-            # 5% Take Profit → Sell 1 share
+            # 5% Take Profit
             if profit_pct >= 5:
                 simulate_sell(1, close_price)
-                send_telegram_message(f"💰 <b>Take Profit Hit (+5%)</b>\nSold 1 share @ ${close_price:.2f}")
+                send_telegram_message(f"💰 <b>Take Profit (+5%)</b> - Sold 1 share @ ${close_price:.2f}")
             
-            # EMA50 Trailing Stop (only after being profitable)
+            # EMA50 Trailing Stop (only after profitable)
             elif close_price < ema50 and profit_pct > 0:
                 simulate_sell(position["shares"], close_price)
-                send_telegram_message(f"🛑 <b>EMA50 Trailing Stop Triggered</b>\nSold position @ ${close_price:.2f}")
+                send_telegram_message(f"🛑 <b>EMA50 Trailing Stop</b> - Position sold @ ${close_price:.2f}")
+            
+            # Fast reversal below EMA8
+            elif close_price < ema8 and profit_pct > 0:
+                simulate_sell(position["shares"], close_price)
+                send_telegram_message(f"⚡ <b>Fast Reversal (Below EMA8)</b> - Position sold @ ${close_price:.2f}")
+            
+            # Slower reversal below EMA20
+            elif close_price < ema20 and profit_pct > 0:
+                simulate_sell(position["shares"], close_price)
+                send_telegram_message(f"📉 <b>Reversal (Below EMA20)</b> - Position sold @ ${close_price:.2f}")
         
         # === Buy Alert + Simulated Buy ===
         if close_price > ema50 and current_candle_time != last_alerted_candle:
@@ -139,7 +150,8 @@ while True:
             log_message(alert_msg, "ALERT")
             send_telegram_message(alert_msg)
             
-            # Simulate buying 1 share on alert
+            # === REAL EXECUTION POINT ===
+            # When ready, replace simulate_buy() with real Robinhood order
             simulate_buy(1, close_price)
             
             last_alerted_candle = current_candle_time
