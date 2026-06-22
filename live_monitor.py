@@ -37,28 +37,14 @@ def save_position(position):
 
 def simulate_buy(shares, price):
     position = load_position()
-    if shares <= 0:
-        return position
+    if shares <= 0: return position
     total_cost = position["shares"] * position["average_entry"] + shares * price
     new_shares = position["shares"] + shares
     new_average = total_cost / new_shares if new_shares > 0 else 0
     position["shares"] = new_shares
     position["average_entry"] = round(new_average, 2)
     save_position(position)
-    log_message(f"Simulated BUY: {shares} @ ${price:.2f} → New Avg: ${new_average:.2f}")
-    return position
-
-def simulate_sell(shares, price):
-    position = load_position()
-    if shares > position["shares"]:
-        shares = position["shares"]
-    if shares <= 0:
-        return position
-    position["shares"] -= shares
-    if position["shares"] == 0:
-        position["average_entry"] = 0.0
-    save_position(position)
-    log_message(f"Simulated SELL: {shares} @ ${price:.2f} → Remaining: {position['shares']}")
+    log_message(f"Simulated BUY: {shares} @ ${price:.2f} → Avg Entry: ${new_average:.2f}")
     return position
 
 def send_telegram_message(message):
@@ -76,8 +62,7 @@ def send_telegram_message(message):
 
 def check_telegram_commands():
     global last_update_id, trading_paused
-    if not TELEGRAM_BOT_TOKEN:
-        return
+    if not TELEGRAM_BOT_TOKEN: return
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getUpdates?offset={last_update_id + 1}&timeout=5"
     try:
         response = requests.get(url, timeout=10).json()
@@ -94,7 +79,7 @@ def check_telegram_commands():
     except Exception as e:
         log_message(f"Telegram command error: {e}", "WARNING")
 
-print("Starting TNA monitor (Complete Version)...\n", flush=True)
+print("Starting TNA monitor (Advanced Version)...\n", flush=True)
 log_message("Monitor started")
 
 send_telegram_message("✅ <b>TNA Monitor Active</b>\nPosition tracking + Pause/Resume enabled.")
@@ -116,6 +101,7 @@ while True:
         current_candle_time = df.index[-1]
         log_message(f"Close: ${close_price:.2f} | EMA50: ${ema50:.2f} | EMA20: ${ema20:.2f} | AO: {ao:.2f}")
         
+        # One alert per 1H candle + auto position update (simulated)
         if close_price > ema50 and current_candle_time != last_alerted_candle:
             alert_msg = (
                 f"🚨 <b>ALERT - Price Above EMA50</b>\n\n"
@@ -126,6 +112,11 @@ while True:
             )
             log_message(alert_msg, "ALERT")
             send_telegram_message(alert_msg)
+            
+            # === Future automation point ===
+            # When ready for real trading, replace simulate_buy() with real order execution
+            position = simulate_buy(1, close_price)   # Simulate buying 1 share on alert
+            
             last_alerted_candle = current_candle_time
         
         time.sleep(check_every_minutes * 60)
