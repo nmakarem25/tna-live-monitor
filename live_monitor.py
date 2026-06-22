@@ -44,7 +44,17 @@ def simulate_buy(shares, price):
     position["shares"] = new_shares
     position["average_entry"] = round(new_average, 2)
     save_position(position)
-    log_message(f"Simulated BUY: {shares} @ ${price:.2f} → Avg Entry: ${new_average:.2f}")
+    log_message(f"Simulated BUY: {shares} @ ${price:.2f}")
+    return position
+
+def simulate_sell(shares, price):
+    position = load_position()
+    if shares > position["shares"]: shares = position["shares"]
+    if shares <= 0: return position
+    position["shares"] -= shares
+    if position["shares"] == 0: position["average_entry"] = 0.0
+    save_position(position)
+    log_message(f"Simulated SELL: {shares} @ ${price:.2f}")
     return position
 
 def send_telegram_message(message):
@@ -79,10 +89,10 @@ def check_telegram_commands():
     except Exception as e:
         log_message(f"Telegram command error: {e}", "WARNING")
 
-print("Starting TNA monitor (Advanced Version)...\n", flush=True)
+print("Starting TNA monitor (With Auto Sell Logic)...\n", flush=True)
 log_message("Monitor started")
 
-send_telegram_message("✅ <b>TNA Monitor Active</b>\nPosition tracking + Pause/Resume enabled.")
+send_telegram_message("✅ <b>TNA Monitor Active</b>\nAuto sell logic + Pause/Resume enabled.")
 
 while True:
     check_telegram_commands()
@@ -101,7 +111,23 @@ while True:
         current_candle_time = df.index[-1]
         log_message(f"Close: ${close_price:.2f} | EMA50: ${ema50:.2f} | EMA20: ${ema20:.2f} | AO: {ao:.2f}")
         
-        # One alert per 1H candle + auto position update (simulated)
+        position = load_position()
+        
+        # === Automatic Sell Logic ===
+        if position["shares"] > 0:
+            profit_pct = ((close_price - position["average_entry"]) / position["average_entry"]) * 100
+            
+            # 5% Take Profit → Sell 1 share
+            if profit_pct >= 5:
+                simulate_sell(1, close_price)
+                send_telegram_message(f"💰 <b>Take Profit Hit (+5%)</b>\nSold 1 share @ ${close_price:.2f}")
+            
+            # EMA50 Trailing Stop (only after being profitable)
+            elif close_price < ema50 and profit_pct > 0:
+                simulate_sell(position["shares"], close_price)
+                send_telegram_message(f"🛑 <b>EMA50 Trailing Stop Triggered</b>\nSold position @ ${close_price:.2f}")
+        
+        # === Buy Alert + Simulated Buy ===
         if close_price > ema50 and current_candle_time != last_alerted_candle:
             alert_msg = (
                 f"🚨 <b>ALERT - Price Above EMA50</b>\n\n"
@@ -113,9 +139,8 @@ while True:
             log_message(alert_msg, "ALERT")
             send_telegram_message(alert_msg)
             
-            # === Future automation point ===
-            # When ready for real trading, replace simulate_buy() with real order execution
-            position = simulate_buy(1, close_price)   # Simulate buying 1 share on alert
+            # Simulate buying 1 share on alert
+            simulate_buy(1, close_price)
             
             last_alerted_candle = current_candle_time
         
