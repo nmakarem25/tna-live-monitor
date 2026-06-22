@@ -6,7 +6,7 @@ import json
 import requests
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-TELEGRAM_CHAT_ID = os.getenv("TELETELEGRAM_CHAT_ID")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 ticker = "TNA"
 interval = "1h"
@@ -34,6 +34,26 @@ def load_position():
 def save_position(position):
     with open(position_file, "w") as f:
         json.dump(position, f, indent=2)
+
+# ==================== REAL EXECUTION PLACEHOLDERS ====================
+
+def place_real_buy(shares, price):
+    """
+    TODO: Replace this with real Robinhood order execution.
+    Example tools: place_equity_order, review_equity_order
+    """
+    log_message(f"[REAL BUY PLACEHOLDER] Would buy {shares} shares at ${price:.2f}")
+    # In the future, this will call the actual Robinhood API
+    return True
+
+def place_real_sell(shares, price):
+    """
+    TODO: Replace this with real Robinhood order execution.
+    """
+    log_message(f"[REAL SELL PLACEHOLDER] Would sell {shares} shares at ${price:.2f}")
+    return True
+
+# ===================================================================
 
 def simulate_buy(shares, price):
     position = load_position()
@@ -89,10 +109,10 @@ def check_telegram_commands():
     except Exception as e:
         log_message(f"Telegram command error: {e}", "WARNING")
 
-print("Starting TNA monitor (Advanced Auto-Sell)...\n", flush=True)
+print("Starting TNA monitor (Ready for Real Execution)...\n", flush=True)
 log_message("Monitor started")
 
-send_telegram_message("✅ <b>TNA Monitor Active</b>\nAdvanced auto-sell logic enabled.")
+send_telegram_message("✅ <b>TNA Monitor Active</b>\nReady for future real execution integration.")
 
 while True:
     check_telegram_commands()
@@ -106,7 +126,6 @@ while True:
         close_price = float(df['Close'].values.flatten()[-1])
         ema50 = float(df['Close'].ewm(span=50, adjust=False).mean().values.flatten()[-1])
         ema20 = float(df['Close'].ewm(span=20, adjust=False).mean().values.flatten()[-1])
-        ema8 = float(df['Close'].ewm(span=8, adjust=False).mean().values.flatten()[-1])
         ao = float((df['Close'].rolling(5).mean() - df['Close'].rolling(34).mean()).values.flatten()[-1])
         
         current_candle_time = df.index[-1]
@@ -114,31 +133,19 @@ while True:
         
         position = load_position()
         
-        # === Automatic Sell Logic ===
+        # Automatic Sell Logic (keep simulation for now)
         if position["shares"] > 0:
             profit_pct = ((close_price - position["average_entry"]) / position["average_entry"]) * 100
             
-            # 5% Take Profit
             if profit_pct >= 5:
                 simulate_sell(1, close_price)
                 send_telegram_message(f"💰 <b>Take Profit (+5%)</b> - Sold 1 share @ ${close_price:.2f}")
             
-            # EMA50 Trailing Stop (only after profitable)
             elif close_price < ema50 and profit_pct > 0:
                 simulate_sell(position["shares"], close_price)
                 send_telegram_message(f"🛑 <b>EMA50 Trailing Stop</b> - Position sold @ ${close_price:.2f}")
-            
-            # Fast reversal below EMA8
-            elif close_price < ema8 and profit_pct > 0:
-                simulate_sell(position["shares"], close_price)
-                send_telegram_message(f"⚡ <b>Fast Reversal (Below EMA8)</b> - Position sold @ ${close_price:.2f}")
-            
-            # Slower reversal below EMA20
-            elif close_price < ema20 and profit_pct > 0:
-                simulate_sell(position["shares"], close_price)
-                send_telegram_message(f"📉 <b>Reversal (Below EMA20)</b> - Position sold @ ${close_price:.2f}")
         
-        # === Buy Alert + Simulated Buy ===
+        # Buy Alert
         if close_price > ema50 and current_candle_time != last_alerted_candle:
             alert_msg = (
                 f"🚨 <b>ALERT - Price Above EMA50</b>\n\n"
@@ -151,7 +158,7 @@ while True:
             send_telegram_message(alert_msg)
             
             # === REAL EXECUTION POINT ===
-            # When ready, replace simulate_buy() with real Robinhood order
+            # When ready, replace simulate_buy() with place_real_buy()
             simulate_buy(1, close_price)
             
             last_alerted_candle = current_candle_time
