@@ -16,7 +16,7 @@ position_file = "position.json"
 
 trading_paused = False
 last_alerted_candle = None
-last_update_id = 0   # For Telegram command polling
+last_update_id = 0
 
 def log_message(message, level="INFO"):
     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -34,6 +34,17 @@ def load_position():
 def save_position(position):
     with open(position_file, "w") as f:
         json.dump(position, f, indent=2)
+
+def simulate_buy(shares, price):
+    position = load_position()
+    total_cost = position["shares"] * position["average_entry"] + shares * price
+    new_shares = position["shares"] + shares
+    new_average = total_cost / new_shares if new_shares > 0 else 0
+    position["shares"] = new_shares
+    position["average_entry"] = round(new_average, 2)
+    save_position(position)
+    log_message(f"Simulated BUY: {shares} shares @ ${price:.2f} | New Avg Entry: ${new_average:.2f}")
+    return position
 
 def send_telegram_message(message):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
@@ -58,45 +69,70 @@ def check_telegram_commands():
         if response.get("ok"):
             for update in response.get("result", []):
                 last_update_id = update["update_id"]
-                message = update.get("message", {})
-                text = message.get("text", "").strip().lower()
-                
+                text = update.get("message", {}).get("text", "").strip().lower()
                 if text == "/pause":
                     trading_paused = True
-                    send_telegram_message("⏸️ <b>Trading PAUSED</b>\nNo new buys will be considered.")
-                    log_message("Trading paused via Telegram command.", "WARNING")
-                
+                    send_telegram_message("⏸️ <b>Trading PAUSED</b>")
                 elif text == "/resume":
                     trading_paused = False
                     send_telegram_message("▶️ <b>Trading RESUMED</b>")
-                    log_message("Trading resumed via Telegram command.")
     except Exception as e:
-        log_message(f"Telegram command check error: {e}", "WARNING")
+        log_message(f"Telegram command error: {e}", "WARNING")
 
-print("Starting TNA monitor (Full Version with Pause/Resume + Position Tracking)...\n", flush=True)
+def get_daily_summary():
+    try:
+        df = yf.download(tickers=ticker, period="5d", interval=interval, progress=False)
+        close_price = float(df['Close'].values.flatten()[-1])
+        ema50 = float(df['Close'].ewm(span=50, adjust=False).mean().values.flatten()[-1])
+        ema20 = float(df['Close'].ewm(span=20, adjust=False).mean().values.flatten()[-1])
+        ao = float((df['Close'].rolling(5).mean() - df['Close'].rolling(34).mean()).values.flatten()[-1])
+        above_ema50 = "Above" if close_price > ema50 else "Below"
+        
+        position = load_position()
+        pos_info = f"Shares: {position['shares']} | Avg Entry: ${position['average_entry']:.2f}" if position['shares'] > 0 else "No open position"
+        
+        return (
+            f"📊 <b>TNA Daily Summary</b>\n\n"
+            f"<b>Time:</b> {datetime.now().strftime('%H:%M')}\n"
+            f"<b>Close:</b> ${close_price:.2f}\n"
+            f"<b>EMA50:</b> ${ema50:.2f} ({above_ema50})\n"
+            f"<b>EMA20:</b> ${ema20:.2f}\n"
+            f"<b>AO:</b> {ao:.2f}\n\n"
+            f"<b>Position:</b> {pos_info}"
+        )
+    except Exception as e:
+        return f"Error generating summary: {e}"
+
+print("Starting TNA monitor (Full Version)...\n", flush=True)
 log_message("Monitor started")
 
-position = load_position()
-send_telegram_message("✅ <b>TNA Monitor Active</b>\nPosition tracking + Pause/Resume commands enabled.")
+send_telegram_message("✅ <b>TNA Monitor Active</b>\nPosition tracking + Pause/Resume + Daily summaries enabled.")
 
 while True:
-    check_telegram_commands()   # Check for /pause and /resume
+    check_telegram_commands()
     
     if trading_paused:
-        log_message("Trading is PAUSED. Skipping monitoring cycle.", "WARNING")
         time.sleep(check_every_minutes * 60)
         continue
     
+    now = datetime.now()
+    
+    # Daily Summaries
+    if now.hour == 15 and now.minute == 55:
+        send_telegram_message(get_daily_summary())
+        time.sleep(60)
+    if now.hour == 19 and now.minute == 55:
+        send_telegram_message(get_daily_summary())
+        time.sleep(60)
+    
     try:
         df = yf.download(tickers=ticker, period="90d", interval=interval, progress=False)
-        
         close_price = float(df['Close'].values.flatten()[-1])
         ema50 = float(df['Close'].ewm(span=50, adjust=False).mean().values.flatten()[-1])
         ema20 = float(df['Close'].ewm(span=20, adjust=False).mean().values.flatten()[-1])
         ao = float((df['Close'].rolling(5).mean() - df['Close'].rolling(34).mean()).values.flatten()[-1])
         
         current_candle_time = df.index[-1]
-        
         log_message(f"Close: ${close_price:.2f} | EMA50: ${ema50:.2f} | EMA20: ${ema20:.2f} | AO: {ao:.2f}")
         
         # One alert per 1H candle
